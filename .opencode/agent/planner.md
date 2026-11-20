@@ -1,7 +1,7 @@
 ---
 description: "規劃者（planner）：只讀程式與規格，產出 docs/plan.md。"
 mode: subagent
-model: omniroute/cx/gpt-6-sol
+model: omniroute/cc/claude-opus-5-5
 steps: 80
 temperature: 0.2
 permission:

@@ -1,7 +1,7 @@
 ---
 description: "實作者（coder）：依 docs/plan.md 實作程式、測試、notebook 與打包腳本，回覆前先自行跑 gates。"
 mode: subagent
-model: omniroute/cc/claude-opus-5-5
+model: omniroute/cx/gpt-6-sol
 steps: 200
 temperature: 0.1
 permission:

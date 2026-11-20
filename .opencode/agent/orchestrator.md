@@ -1,7 +1,7 @@
 ---
 description: "編排者（orchestrator）：依三關流程委派 planner、coder、reviewer、tester，最多 8 輪。"
 mode: primary
-model: omniroute/cx/gpt-6-sol
+model: omniroute/cc/claude-opus-5-5
 steps: 200
 temperature: 0.1
 permission:

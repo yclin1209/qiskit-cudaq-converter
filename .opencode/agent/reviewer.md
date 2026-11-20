@@ -1,7 +1,7 @@
 ---
 description: "審查者（reviewer）：唯讀審查正確性與規格符合度，主要抓 bug 的角色。最後一行為 VERDICT。"
 mode: subagent
-model: omniroute/cx/gpt-6-sol
+model: omniroute/cc/claude-opus-5-5
 steps: 120
 temperature: 0.1
 permission:
