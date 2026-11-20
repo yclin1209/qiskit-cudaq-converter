@@ -2,6 +2,10 @@
 
 支援 Qiskit `QuantumCircuit` 或原始碼與 CUDA-Q kernel／原始碼之間的電路層級（circuit-level）轉換；可比較狀態向量保真度（fidelity）與抽樣總變異距離（TVD）。提供雙欄編輯器（widget）、cell magic、命令列（CLI）及 Colab notebook。Qiskit 原始碼輸入**會執行輸入的程式碼**，僅使用可信任內容；CUDA-Q 原始碼以 AST 靜態解析。
 
+## 開發過程（process）
+
+本專案以 opencode 多代理迴圈（multi-agent loop）開發。過程與各輪結果見 [docs/PROCESS.md](docs/PROCESS.md)；主要迴圈的事後驗收與後續修正見 [runs/20261120-193502/postcheck.md](runs/20261120-193502/postcheck.md)。Colab 打包檔為 [dist/qcconvert_colab.zip](dist/qcconvert_colab.zip)。
+
 ## 支援範圍與限制
 
 - 支援 `h/x/y/z/s/t/sx` 及其反閘、旋轉閘、相位閘、`u`、`r`、受控閘、`swap/ccx/mcx`、`rxx/ryy/rzz`、測量與重置；常數迴圈、浮點參數、基本算術表示式及多量子暫存器。
