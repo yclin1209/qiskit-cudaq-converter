@@ -197,3 +197,27 @@ Gates 全過後，將目前工作樹做本機 `git add -A`（尊重 `.gitignore`
 4. 依序跑範例：API（Bell／GHZ／參數化電路與 `compare`）、`%load_ext qcconvert` 後用 `%%qiskit2cudaq --run` 或 `%%cudaq2qiskit`，以及 `qcconvert.show()` 雙欄編輯器。有 GPU 時可跑選用的 21-qubit GHZ 耗時比較。
 
 注意：安裝 cell 目前**沒有**安裝 `qiskit-aer`；遇到中途測量並按執行對照時，可能因 §6 發現 2 而出錯。
+
+## 10. 修正紀錄（2026-11-21，Asia/Taipei，UTC+8）
+
+針對 §5 的 5 項發現，各自**先寫會失敗的回歸測試（regression test）**、確認在舊程式上失敗，再修正。新測試集中在 `tests/test_postcheck_fixes.py`（19 個）。`.venv` 原本就已安裝 `qiskit-aer` 0.18.4 與 `ipywidgets` 8.1.9，未另外安裝任何套件。
+
+| # | 發現 | 修正（檔案:行） | 回歸測試 |
+|---|---|---|---|
+| 1 | 中途測量 + 多 creg 時 Aer 的鍵帶空白（`'0 1'`），與 `_mid_counts` 的 `'01'` 對不上，TVD 虛報 1.0 | 新增 `_normalize_qiskit_counts`（`runner.py:145`）：依 `circuit.cregs` 與 `find_bit` 把各 creg 片段放回全域 clbit 索引，輸出最高位在左的連續字串（Qiskit 順序），兩邊格式一致。另發現由 CUDA-Q 原始碼轉回的電路含自訂受控閘，Aer 會報 `unknown instruction`，故 `_aer_counts`（`runner.py:167-180`）先 `transpile(..., optimization_level=0)` | `test_mid_measurement_multiple_cregs_distribution`、`test_mid_measurement_uneven_cregs_bit_order`（2+1 位元 creg，確定性結果 `'010'`）、`test_normalize_qiskit_counts_helper` |
+| 2 | 硬依賴 `qiskit_aer`，Colab 未安裝 | `_aer_counts` 缺 Aer 時丟出 `ConversionError`，訊息提示 `pip install qiskit-aer`（`runner.py:169-175`）；`pyproject.toml:5` 依賴加入 `qiskit-aer`；notebook 安裝 cell 改為 `pip install cudaq qiskit qiskit-aer ipywidgets`；`colab/README_colab.md:5`、`README.md` 新增「安裝（installation）」一節 | `test_mid_measurement_without_aer_gives_clear_error`（`sys.modules['qiskit_aer']=None`，非中途測量電路仍可比較）、`test_install_instructions_list_qiskit_aer` |
+| 3 | `import qcconvert` 必須有 ipywidgets | `__init__.py:15-30`：`show()`、`load_ipython_extension()` 改為呼叫時才匯入 `widgets`／`magics`；缺 ipywidgets 時 `show()` 丟出提示安裝的 `ImportError`。`pyproject.toml:8-9` 新增選用依賴 `colab = ["ipywidgets", "ipython"]` | `test_import_without_ipywidgets`（子行程封鎖 ipywidgets，`qiskit_to_cudaq` 可用且未載入 `qcconvert.widgets`）、`test_lazy_show_and_extension_still_work` |
+| 4 | `_mid_counts` 只認裸敘述 `mz(...)` | 抽出 `_capture_measurements`（`runner.py:44-109`）：擷取頂層 `mz/mx/my(q[i])` 敘述與 `r = mz(q[i])` 賦值（改寫成暫存變數再指回 `r`）；其他任何測量寫法（`cudaq.mz`、整個暫存器 `mz(q)`、迴圈內測量、tuple 賦值）丟出含 kernel 原始碼行號的 `UnsupportedFeatureError`（`runner.py:91-97`）。註：`cudaq.mz` 在 CUDA-Q 0.17 kernel 內本身無法編譯；實測 `mx` 等同 H 後 Z 測量且不轉回，與 Qiskit 端 `h + measure` 一致 | `test_mid_capture_assigned_measurement`、`test_mid_capture_mx_my[mx/my]`、`test_mid_capture_unsupported_forms`（4 種） |
+| 5 | `h/x/y/z/swap` 的 `.adj` 沒有等價測試 | 實測 CUDA-Q 0.17 **無法編譯**這些寫法（`h/x/y/z.adj`：`'quake.h' op may not be adjoint`；`swap.adj`：`unknown function call`），所以無法做等價測試。改為測試「CUDA-Q 確實編譯失敗」且轉換器拒絕時訊息含行號與「自反閘，請直接寫 `h(...)`」提示（`cudaq_ast.py:198-201`）；README 支援範圍同步註明 | `test_self_inverse_adj[h/x/y/z/swap]` |
+
+### 修正後驗證
+
+| 項目 | 結果 |
+|---|---|
+| pytest | **319 passed**（原 300 + 新 19），覆蓋率（coverage）**93.23%** |
+| ruff check／ruff format --check／mypy | All checks passed／27 files already formatted／Success（12 source files） |
+| Notebook 無頭執行（`QCCONVERT_SKIP_INSTALL=1 QCCONVERT_TARGET=qpp-cpu`，`tests/test_notebook.py`） | 1 passed |
+| `dist/qcconvert_colab.zip` | 重新打包，24,024 bytes，14 個檔案（`qcconvert/*.py` 12 個、`qcconvert_demo.ipynb`、`README_colab.md`） |
+| 隔離目錄匯入（解壓到 `mktemp -d`，`PYTHONPATH` 指向該目錄） | `qcconvert` 從暫存目錄載入；3 qubit、creg `a`(1)+`b`(2) 的中途測量電路：Qiskit `{'000': 970, '011': 990, '100': 1010, '111': 1030}`、CUDA-Q `{'000': 1016, '011': 1031, '100': 953, '111': 1000}`，**TVD = 0.0218**（≤ 0.05），`distribution_only=True`、`statevector_equal=None`（中途測量依設計只比分佈） |
+
+仍未解決：中途測量的 Qiskit 參考仍需 `qiskit-aer`（沒有純 `Statevector` 的退路）；`cudaq_ast` 仍不接受 `r = mz(...)` 賦值形式的 CUDA-Q 原始碼轉 Qiskit（只有 `compare` 的擷取支援）；本次修正未經 loop 的 reviewer／tester 複審。

@@ -195,6 +195,11 @@ class Parser:
                 )
                 self.ir.num_clbits += 1
             return
+        if adj and gate in {"h", "x", "y", "z", "swap"}:
+            # CUDA-Q 0.17 無法編譯這些 .adj（quake 不允許 adjoint／無此函式），故無從驗證等價。
+            reject(
+                call, f"{gate}.adj（CUDA-Q 0.17 無法編譯；{gate} 為自反閘，請直接寫 {gate}(...)）"
+            )
         if adj and gate not in {"s", "t", "rx", "ry", "rz", "r1", "u3"}:
             reject(call, gate + ".adj")
         if adj:

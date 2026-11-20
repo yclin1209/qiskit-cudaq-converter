@@ -9,12 +9,104 @@ from inspect import signature
 
 import cudaq
 import numpy as np
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, transpile
 from qiskit.circuit import ParameterVectorElement
 from qiskit.quantum_info import Statevector
 
 from .equivalence import CompareReport, fidelity, reorder_counts, tvd
-from .errors import ConversionError
+from .errors import ConversionError, UnsupportedFeatureError
+
+_MEASURES = {"mz", "mx", "my"}
+
+
+def _is_measure(node: ast.AST) -> bool:
+    """任何形式的測量呼叫（含 `cudaq.mz` 這類屬性寫法）。"""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    return (isinstance(func, ast.Name) and func.id in _MEASURES) or (
+        isinstance(func, ast.Attribute) and func.attr in _MEASURES
+    )
+
+
+def _single_qubit_measure(node: ast.AST) -> bool:
+    """可擷取的形式：`mz(q[i])`／`mx(...)`／`my(...)`，只量一個 qubit。"""
+    return (
+        _is_measure(node)
+        and isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Subscript)
+        and not node.keywords
+    )
+
+
+def _capture_measurements(source: str) -> tuple[str, str, int]:
+    """改寫 kernel，使其依呼叫順序回傳每次測量結果；回傳（原始碼、函式名、測量數）。"""
+    tree = ast.parse(source)
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    if len(functions) != 1:
+        raise ConversionError("中途測量 kernel 函式數量不符")
+    function = functions[0]
+    names: list[str] = []
+
+    def capture() -> str:
+        name = f"_qcconvert_measure_{len(names)}"
+        names.append(name)
+        return name
+
+    body: list[ast.stmt] = []
+    for stmt in function.body:
+        if isinstance(stmt, ast.Expr) and _single_qubit_measure(stmt.value):
+            assert isinstance(stmt.value, ast.Call)
+            name = capture()
+            body.append(
+                ast.copy_location(
+                    ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=stmt.value),
+                    stmt,
+                )
+            )
+            continue
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+            and _single_qubit_measure(stmt.value)
+        ):
+            assert isinstance(stmt.value, ast.Call)
+            name = capture()
+            body.append(
+                ast.copy_location(
+                    ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=stmt.value),
+                    stmt,
+                )
+            )
+            body.append(
+                ast.copy_location(
+                    ast.Assign(targets=stmt.targets, value=ast.Name(id=name, ctx=ast.Load())),
+                    stmt,
+                )
+            )
+            continue
+        for node in ast.walk(stmt):
+            if _is_measure(node):
+                raise UnsupportedFeatureError(
+                    f"kernel 原始碼第 {getattr(node, 'lineno', '?')} 行：中途測量比較只支援"
+                    "頂層的 `mz(q[i])`／`mx(q[i])`／`my(q[i])` 或 `r = mz(q[i])`，"
+                    f"不支援 `{ast.unparse(node)}`"
+                )
+        body.append(stmt)
+    function.body = body
+    function.returns = ast.parse("list[bool]", mode="eval").body
+    function.body.append(
+        ast.Return(
+            value=ast.List(
+                elts=[ast.Name(id=name, ctx=ast.Load()) for name in names], ctx=ast.Load()
+            )
+        )
+    )
+    ast.fix_missing_locations(tree)
+    return "import cudaq\n" + ast.unparse(tree), function.name, len(names)
 
 
 def _mid_counts(
@@ -27,41 +119,10 @@ def _mid_counts(
     if not isinstance(source, str):
         raise ConversionError("中途測量需要可讀取原始碼的 kernel")
     try:
-        tree = ast.parse(source)
-        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
-        if len(functions) != 1:
-            raise ConversionError("中途測量 kernel 函式數量不符")
-        function = functions[0]
-        names: list[str] = []
-
-        class Capture(ast.NodeTransformer):
-            def visit_Expr(self, node: ast.Expr) -> ast.stmt:
-                if (
-                    isinstance(node.value, ast.Call)
-                    and isinstance(node.value.func, ast.Name)
-                    and node.value.func.id == "mz"
-                ):
-                    name = f"_qcconvert_measure_{len(names)}"
-                    names.append(name)
-                    return ast.copy_location(
-                        ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=node.value),
-                        node,
-                    )
-                return node
-
-        Capture().visit(function)
-        if len(names) != len(mapping):
+        rewritten, name, count = _capture_measurements(source)
+        if count != len(mapping):
             raise ConversionError("中途測量 kernel 測量數與 Qiskit 電路不一致")
-        function.returns = ast.parse("list[bool]", mode="eval").body
-        function.body.append(
-            ast.Return(
-                value=ast.List(
-                    elts=[ast.Name(id=name, ctx=ast.Load()) for name in names], ctx=ast.Load()
-                )
-            )
-        )
-        ast.fix_missing_locations(tree)
-        captured = load_kernel("import cudaq\n" + ast.unparse(tree), function.name)
+        captured = load_kernel(rewritten, name)
         samples = cudaq.run(captured, *args, shots_count=shots)
         counts: dict[str, int] = {}
         if len(samples) != shots:
@@ -79,6 +140,44 @@ def _mid_counts(
         raise
     except Exception as exc:
         raise ConversionError(f"中途測量無法比較：{exc}") from exc
+
+
+def _normalize_qiskit_counts(counts: dict[str, int], circuit: QuantumCircuit) -> dict[str, int]:
+    """把 Qiskit／Aer 以空白分隔各 creg 的鍵，轉成依全域 clbit 索引、最高位在左的連續字串。"""
+    width = circuit.num_clbits
+    registers = list(reversed(circuit.cregs))
+    normalized: dict[str, int] = {}
+    for key, value in counts.items():
+        parts = key.split()
+        if len(parts) == len(registers) and all(
+            len(part) == len(reg) for part, reg in zip(parts, registers)
+        ):
+            bits = ["0"] * width
+            for part, reg in zip(parts, registers):
+                for offset, bit in enumerate(part):
+                    index = circuit.find_bit(reg[len(reg) - 1 - offset]).index
+                    bits[width - 1 - index] = bit
+            label = "".join(bits)
+        else:
+            label = key.replace(" ", "")
+        normalized[label] = normalized.get(label, 0) + value
+    return dict(sorted(normalized.items()))
+
+
+def _aer_counts(circuit: QuantumCircuit, shots: int, seed: int | None) -> dict[str, int]:
+    """中途測量的 Qiskit 參考分佈；需要 qiskit-aer，缺少時給明確訊息。"""
+    try:
+        from qiskit_aer import AerSimulator
+    except ImportError as exc:
+        raise ConversionError(
+            "中途測量（mid-circuit measurement）的 Qiskit 參考分佈需要 qiskit-aer；"
+            "請執行 `pip install qiskit-aer`（Colab notebook 的安裝儲存格已包含）"
+        ) from exc
+    simulator = AerSimulator()
+    # 由 CUDA-Q 原始碼轉回的電路可能含自訂受控閘，Aer 需要先 transpile 成基本閘。
+    runnable = transpile(circuit, simulator, optimization_level=0)
+    result = simulator.run(runnable, shots=shots, seed_simulator=seed).result()
+    return _normalize_qiskit_counts(dict(result.get_counts()), circuit)
 
 
 def _kernel_parameters(kernel: object) -> list[str]:
@@ -196,14 +295,10 @@ def compare(
         except (IndexError, ValueError) as exc:
             raise ConversionError(f"CUDA-Q 測量結果與 Qiskit clbit 對應不符：{exc}") from exc
     if mid:
-        from qiskit_aer import AerSimulator
-
         ref_circuit = bound.copy()
         if not measured:
             ref_circuit.measure_all()
-        ref_counts = dict(
-            AerSimulator().run(ref_circuit, shots=shots, seed_simulator=seed).result().get_counts()
-        )
+        ref_counts = _aer_counts(ref_circuit, shots, seed)
     else:
         rng = np.random.default_rng(seed)
         probabilities = Statevector.from_instruction(clean).probabilities()

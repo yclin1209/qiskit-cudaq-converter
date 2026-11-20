@@ -2,7 +2,11 @@
 name = "qcconvert"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["qiskit", "cudaq", "numpy"]
+dependencies = ["qiskit", "qiskit-aer", "cudaq", "numpy"]
+
+[project.optional-dependencies]
+# 雙欄編輯器（show）與 cell magic 用；核心轉換 API 不需要。
+colab = ["ipywidgets", "ipython"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
