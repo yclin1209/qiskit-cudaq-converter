@@ -1,0 +1,37 @@
+== pytest
+.venv/lib/python3.13/site-packages/cudaq/__init__.py:282
+  /workspace/qiskit-cudaq-converter/.venv/lib/python3.13/site-packages/cudaq/__init__.py:282: UserWarning: cudaq-logical is in preview. Its APIs, behavior, and documentation may change substantially in upcoming versions.
+    from . import logical  # noqa: F401
+
+src/qcconvert/cudaq_io.py:13
+  /workspace/qiskit-cudaq-converter/src/qcconvert/cudaq_io.py:13: FutureWarning: The CUDA-Q `sample` and `observe` algorithmic primitives will change in a future release. Existing code may require updates. See https://nvidia.github.io/cuda-quantum/latest/using/migration/upcoming_changes.html for details.
+    import cudaq
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.13.5-final-0 ________________
+
+Name                           Stmts   Miss  Cover
+--------------------------------------------------
+src/qcconvert/__init__.py          8      0   100%
+src/qcconvert/__main__.py         32      2    94%
+src/qcconvert/api.py              33      1    97%
+src/qcconvert/cudaq_ast.py       156     21    87%
+src/qcconvert/cudaq_io.py        116      7    94%
+src/qcconvert/equivalence.py      27      0   100%
+src/qcconvert/errors.py            2      0   100%
+src/qcconvert/ir.py               16      0   100%
+src/qcconvert/magics.py           38      0   100%
+src/qcconvert/qiskit_io.py       208      8    96%
+src/qcconvert/runner.py          146     17    88%
+src/qcconvert/widgets.py          75     10    87%
+--------------------------------------------------
+TOTAL                            857     66    92%
+Required test coverage of 90% reached. Total coverage: 92.30%
+300 passed, 2 warnings in 52.22s
+== ruff check
+All checks passed!
+== ruff format --check
+26 files already formatted
+== mypy
+Success: no issues found in 12 source files

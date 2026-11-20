@@ -1,0 +1,20 @@
+[project]
+name = "qcconvert"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["qiskit", "cudaq", "numpy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=qcconvert --cov-fail-under=90"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["cudaq", "cudaq.*", "qiskit", "qiskit.*", "qiskit_aer", "qiskit_aer.*", "ipywidgets", "IPython"]
+ignore_missing_imports = true

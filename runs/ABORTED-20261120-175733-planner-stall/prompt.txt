@@ -1,0 +1,1 @@
+依 AGENTS.md（含「環境事實」與「已決定事項」）與 specs/SPEC.md，從零開發 qcconvert（程式放 src/qcconvert/，notebook 放 colab/，打包腳本放 scripts/），走完三關流程（planner → coder → reviewer + tester），最多 8 輪，reviewer 與 tester 都 VERDICT: PASS 才結束。驗收以 SPEC §5 凍結的 14 條為準。每輪結束把紀錄追加到 runs/20261120-175733/loop-log.md，用繁體中文寫，專有名詞附英文。委派時要求所有子代理的文件與回覆都用繁體中文。

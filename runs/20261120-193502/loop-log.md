@@ -1,0 +1,7 @@
+# loop-log（迴圈紀錄）
+
+- 第 1 輪：reviewer VERDICT: FAIL（§5 第 3、6 條 FAIL）；tester VERDICT: FAIL（§5 第 3、5、6、8 條 FAIL）；gates（tester 實跑）：pytest 206 passed／4 xfailed，coverage 91.60%，44.48 秒；ruff check 通過；ruff format --check 26 files already formatted；mypy 12 檔無問題。
+- 第 2 輪：reviewer VERDICT: FAIL（§5 第 3、11 條 FAIL；阻擋：反向 Qiskit 原始碼不可執行、sdg/tdg 被拒、widget 方向切換錯誤）；tester VERDICT: FAIL（§5 第 3、11 條 FAIL）；gates（tester 實跑）：pytest 239 passed／10 xfailed，coverage 91.93%，51.75 秒；ruff check 通過；ruff format --check 26 files already formatted；mypy 12 檔無問題。
+- 第 3 輪：reviewer VERDICT: PASS（14 條全 PASS）；tester VERDICT: FAIL（§5 第 11 條 FAIL：反向原始碼參數名 `qc`／`_base`／`_qr0` 與產生的變數衝突，widget 顯示成功但輸出不可執行）；gates（tester 實跑）：pytest 274 passed／4 xfailed，coverage 92.59%，42.46 秒；ruff check 通過；ruff format --check 26 files already formatted；mypy 12 檔無問題。
+- 第 4 輪：reviewer VERDICT: FAIL（14 條全 PASS，但阻擋：runner.py:41-48 compare 參數綁定順序錯、runner.py:81 有測量時未用使用者 kernel 比狀態向量）；tester VERDICT: PASS（14 條全 PASS，但已以 2 個 strict xfail 重現 reviewer 兩項問題）；gates（tester 實跑）：pytest 289 passed／2 xfailed，coverage 92.70%，430.18 秒（reviewer 同輪實跑 46.8 秒）；ruff check 通過；ruff format --check 26 files already formatted；mypy 12 檔無問題。
+- 第 5 輪：reviewer VERDICT: FAIL（§5 第 6 條 FAIL：多 qubit 中途測量 compare IndexError，CLI／widget 未攔截）；tester VERDICT: FAIL（§5 第 6 條 FAIL；另重現同 qubit 重複測量 TVD 1.0、reset 後測量 counts 錯，共 5 個 strict xfail）；gates（tester 實跑）：pytest 293 passed／5 xfailed，coverage 92.44%，56.68 秒；ruff check 通過；ruff format --check 26 files already formatted；mypy 12 檔無問題。
