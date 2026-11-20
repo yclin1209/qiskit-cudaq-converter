@@ -56,3 +56,9 @@ permission:
 - 專案根目錄與 `tests/` 不可留下暫存／探測／除錯檔（scratch/probe/debug），需要時寫到 pytest `tmp_path`。
 - 步數有限：在步數用完前一定要給出最終回覆（子代理用光步數會讓整段失敗）。
 - PASS 另需：`.venv/bin/ruff format --check src tests scripts` exit 0；根目錄只允許 AGENTS.md、README.md、opencode.json、pyproject.toml、.gitignore 與目錄 src/ tests/ scripts/ colab/ docs/ specs/ harness/ runs/ dist/（加上 .venv/ .opencode/ .git/ 與工具快取）。
+
+## 防串流停滯規則（stream stall mitigation，harness 加入）
+- 每次寫檔（write／edit）內容控制在約 150 行以內；大檔案先建立骨架，再用多次 edit 分段補上，不要一次輸出整份大檔。
+- 回覆與報告精簡：只寫結論、依據（`檔案:行號`）與必要的數字，不要貼大段程式碼或完整測試輸出（摘要最後幾行即可）。
+- 長時間推理後要盡快產出可見結果；一步只做一件事。
+- 你不能寫檔，報告就是你的最終回覆：總長控制在約 80 行以內；14 條驗收各用一行；阻擋問題每項 1～3 行。
