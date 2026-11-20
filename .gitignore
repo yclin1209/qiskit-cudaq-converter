@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.egg-info/
+build/
+.ipynb_checkpoints/
+runs/*/sessions/
+.opencode/node_modules/

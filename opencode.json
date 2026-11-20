@@ -1,0 +1,96 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "omniroute/cx/gpt-6-sol",
+  "small_model": "omniroute/cc/claude-haiku-5-5",
+  "enabled_providers": [
+    "omniroute"
+  ],
+  "default_agent": "orchestrator",
+  "share": "disabled",
+  "autoupdate": false,
+  "permission": {
+    "edit": "deny",
+    "bash": {
+      "*": "deny",
+      "ls*": "allow",
+      "cat *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "rm *": "deny",
+      "sudo *": "deny",
+      "git push*": "deny",
+      "git commit*": "deny",
+      "git reset*": "deny",
+      "curl *": "deny",
+      "*/dev/tty*": "deny",
+      "pwd": "allow",
+      "head *": "allow",
+      "wc *": "allow",
+      "git log*": "allow",
+      "*pic-detection-study*": "deny"
+    },
+    "task": "deny",
+    "external_directory": "deny",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "question": "deny",
+    "read": {
+      "*": "allow",
+      "/workspace/pic-detection-study/**": "deny",
+      "/workspace/pic-detection-study": "deny"
+    },
+    "glob": {
+      "*": "allow",
+      "/workspace/pic-detection-study/**": "deny",
+      "/workspace/pic-detection-study": "deny"
+    },
+    "grep": {
+      "*": "allow",
+      "/workspace/pic-detection-study/**": "deny",
+      "/workspace/pic-detection-study": "deny"
+    },
+    "list": {
+      "*": "allow",
+      "/workspace/pic-detection-study/**": "deny",
+      "/workspace/pic-detection-study": "deny"
+    },
+    "skill": "deny"
+  },
+  "provider": {
+    "omniroute": {
+      "models": {
+        "cx/gpt-6-sol": {
+          "name": "cx/gpt-6-sol",
+          "reasoning": true,
+          "tool_call": true,
+          "attachment": true,
+          "limit": {
+            "context": 400000,
+            "output": 128000
+          }
+        },
+        "cc/claude-opus-5-5": {
+          "name": "cc/Claude Opus 5.5",
+          "reasoning": true,
+          "tool_call": true,
+          "attachment": true,
+          "limit": {
+            "context": 1000000,
+            "output": 128000,
+            "input": 1000000
+          }
+        },
+        "cc/claude-haiku-5-5": {
+          "name": "cc/claude-haiku-5-5",
+          "reasoning": true,
+          "tool_call": true,
+          "attachment": true,
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        }
+      }
+    }
+  }
+}
