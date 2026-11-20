@@ -3,6 +3,7 @@
 import ast
 import operator
 import re
+from typing import NoReturn
 
 from .errors import ConversionError, UnsupportedFeatureError
 from .ir import Circuit, Op
@@ -60,7 +61,7 @@ ARITH = {
 }
 
 
-def reject(node: ast.AST, name: str | None = None) -> None:
+def reject(node: ast.AST, name: str | None = None) -> NoReturn:
     label = name or (ast.unparse(node.func) if isinstance(node, ast.Call) else type(node).__name__)
     raise UnsupportedFeatureError(f"第 {getattr(node, 'lineno', '?')} 行：不支援 {label}")
 
@@ -97,7 +98,6 @@ class Parser:
         if isinstance(node, ast.BinOp) and type(node.op) in ARITH:
             return int(ARITH[type(node.op)](self.integer(node.left), self.integer(node.right)))
         reject(node, "常數索引")
-        raise AssertionError
 
     def qubits(self, node: ast.AST) -> tuple[int, ...]:
         if isinstance(node, ast.Name) and node.id in self.registers:
@@ -111,7 +111,6 @@ class Parser:
                 if 0 <= index < len(reg):
                     return (reg[index],)
         reject(node, "qubit 索引")
-        raise AssertionError
 
     def angle(self, node: ast.AST) -> float | str:
         for child in ast.walk(node):
@@ -228,7 +227,6 @@ class Parser:
                     "cudaq.qubit",
                 }:
                     reject(stmt, "賦值")
-                    continue
                 is_vector = ast.unparse(value.func) == "cudaq.qvector"
                 if len(value.args) != int(is_vector):
                     reject(stmt, "暫存器")

@@ -10,7 +10,14 @@ colab = ["ipywidgets", "ipython"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=qcconvert --cov-fail-under=90"
+# 行＋分支（line + branch）覆蓋率門檻 100%；跑單一測試檔請加 --no-cov。
+addopts = "--cov=qcconvert --cov-fail-under=100"
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff]
 line-length = 100

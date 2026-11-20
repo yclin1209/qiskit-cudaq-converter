@@ -221,3 +221,46 @@ Gates 全過後，將目前工作樹做本機 `git add -A`（尊重 `.gitignore`
 | 隔離目錄匯入（解壓到 `mktemp -d`，`PYTHONPATH` 指向該目錄） | `qcconvert` 從暫存目錄載入；3 qubit、creg `a`(1)+`b`(2) 的中途測量電路：Qiskit `{'000': 970, '011': 990, '100': 1010, '111': 1030}`、CUDA-Q `{'000': 1016, '011': 1031, '100': 953, '111': 1000}`，**TVD = 0.0218**（≤ 0.05），`distribution_only=True`、`statevector_equal=None`（中途測量依設計只比分佈） |
 
 仍未解決：中途測量的 Qiskit 參考仍需 `qiskit-aer`（沒有純 `Statevector` 的退路）；`cudaq_ast` 仍不接受 `r = mz(...)` 賦值形式的 CUDA-Q 原始碼轉 Qiskit（只有 `compare` 的擷取支援）；本次修正未經 loop 的 reviewer／tester 複審。
+
+## 11. 覆蓋率補到行＋分支 100%（2026-11-21，Asia/Taipei，UTC+8）
+
+起點（含 `--cov-branch`）：91.17%，62 行未執行、50 個分支（branch）只走一邊。終點：**行 100%、分支 100%**（922 行、352 個分支，0 遺漏），**`# pragma: no cover`：0 個**。
+
+### 門檻（threshold）
+- `pyproject.toml`：新增 `[tool.coverage.run] branch = true`，addopts 改為 `--cov=qcconvert --cov-fail-under=100`，另加 `[tool.coverage.report] show_missing = true`。未達 100% 時 pytest 直接失敗。
+- 只跑單一測試檔要加 `--no-cov`，否則部分覆蓋率會觸發門檻。`README.md`（開發一節）與 `docs/plan.md`（更新紀錄）已註明；`AGENTS.md`、`specs/SPEC.md` 未改（凍結）。
+
+### 新增測試（66 個，319 → 385）
+- `tests/test_cudaq_ast_rejections.py`（26 個）：CUDA-Q AST 白名單的每條拒絕路徑都斷言錯誤型別、建構名稱與行號。涵蓋：參數宣告（keyword-only、預設值、`*args`、`**kwargs`）；qubit 索引（負數、超出範圍、未知暫存器、巢狀下標）；角度運算式（函式呼叫、未知名稱、純量取下標、向量未取下標、`np.e`、`if` 運算式、比較）；閘形式（`cx.ctrl`、引數不足、控制重疊、`swap` 三個目標、`h(q)` 廣播、`mz.ctrl`、`reset.adj`）；賦值與暫存器。另有常數算術索引（`q[-1 + 2]`、`q[2 - 1]`）與 `pass` 的正向等價測試。
+- `tests/test_compare_paths.py`（12 個）：kernel 沒有簽章；參數數量不符；綁到另一個符號參數；向量參數不是列表、長度不足；`seed=None`；kernel 量的 qubit 比電路少；AST 不支援但 CUDA-Q 能編譯的 kernel（`h(q)` 廣播）退回只比分佈；中途測量時 kernel 沒有 `funcSrc`；沒有 ClassicalRegister 的 clbit 做中途測量；CUDA-Q 模擬器（`cudaq.run`）回傳 shot 數或位元數不符、或拋出例外（只在這個外部邊界用 monkeypatch）。
+- `tests/test_misc_paths.py`（28 個）：在同一行程內以 `sys.modules['ipywidgets'] = None` 測 `show()` 的 ImportError（不再靠子行程，所以量得到覆蓋率）；CLI 輸出到 stdout；`python -m qcconvert` 進入點（`runpy`）；無效電路名稱；magic 不加 `--run`；參數名清理後重複；`load_kernel` 執行失敗時不留下半初始化的模組；kernel 物件翻譯失敗；`GlobalPhaseGate` 指令；opaque 閘（分解失敗、不分解）；同一參數重複使用；IR 層的非整數索引與非 pi 屬性；widget 的 debounce（負值、連續輸入重新計時、切換方向）。
+
+### 找到並修正的 bug
+1. **參數運算式含函式時，產生的 CUDA-Q kernel 編譯失敗**：Qiskit 的 `theta.sin()` 字串是 `sin(theta)`，原本照抄進 kernel，CUDA-Q 會報 `unhandled function call - sin`（原始的 `CompilerError`，不是 `ConversionError`）。修正：`cudaq_io.py:74-98` 新增 `_numpy_calls`，把 `sin/cos/tan/asin/acos/atan/exp/log` 改寫成 `np.sin/…/np.arcsin/…`（實測 CUDA-Q 0.17 都能編譯）；`abs/sign/conj` 在 CUDA-Q kernel 內無法編譯，改丟 `UnsupportedFeatureError`（「不支援參數運算式函式：abs」）。回歸測試：8 種函式各帶 3 組數值做狀態向量等價、3 種不支援函式、`r` 閘相位含 `sin`。
+2. **widget 在 debounce 期間切換方向會丟掉剛輸入的程式碼**：原本 `_on_direction` 取消計時器後，直接把（還是舊的、甚至空白的）輸出搬到輸入，使用者剛打的內容就不見了。修正：`widgets.py:61-69`，若有尚未觸發的計時器，先用原方向（`change["old"]`）完成轉換再切換；`convert()` 新增可選的 `direction` 參數（`widgets.py:71`）。回歸測試：`test_direction_switch_flushes_pending_edit`。
+3. **Qiskit 原始碼產生器遇到非 pi 屬性會產生壞掉的程式**：`qiskit_io.to_source` 對 `np.e` 這類屬性原本原樣輸出，但生成的程式只匯入別名後的 numpy，執行會 `NameError`。修正：`qiskit_io.py:343-344` 改為丟 `ConversionError`，與 `_parameter_value` 的白名單一致。目前兩個前端都不會產生這種 IR，只有直接建 IR 才會遇到。
+
+以上三項的新測試都先在舊程式上確認會失敗（共 15 個失敗，其中 `test_mid_measurement_needs_kernel_source` 只是因為訊息改了）。
+
+### 刪除或重構的不可達程式碼（dead code）
+- `cudaq_ast.py:64`：`reject()` 的回傳型別標成 `NoReturn`，因此刪掉 `integer()`、`qubits()` 結尾兩行 `raise AssertionError`，以及 `reject(stmt, "賦值")` 之後的 `continue`。
+- `runner.py:181`：新增 `_kernel_source()`，中途測量和測量前狀態重建共用。原本「有測量但 kernel 沒有 `funcSrc`」的 `else: state_kernel = None` 分支，併入既有的 `except ConversionError`，行為不變，都是退回只比分佈。
+- `runner.py:302`：刪掉 `if not measured: ref_circuit.measure_all()`。`mid` 為真代表一定有 measure，這個分支不可能執行；也不再需要 `bound.copy()`。
+- `qiskit_io.py`：`_parameter_value` 刪掉 `isinstance(symbols[...], list)` 分支。symbols 只會是 `Parameter` 或 `ParameterVector`，後者已由下一個 `__getitem__` 分支處理。
+- `cudaq_io.py:219`：`spec_from_file_location` 對 `.py` 路徑一定會回傳 spec 和 loader，原本永遠不會走到的 `raise ConversionError` 改成只用來收斂型別的 `assert`。
+- `cudaq_io.py:186`：`r` 閘原本會對同一個參數字串套用兩次 `param()`，改為只套用一次。
+
+### 已知限制（未改，僅記錄）
+- 不支援 CUDA-Q 的 `h(q)` 廣播寫法和負數索引 `q[-1]`，會明確報「不支援 h」或「qubit 索引」。
+- Qiskit → CUDA-Q 現在支援 `sin` 等函式，但 `ConversionResult.to_qiskit()`（從 IR 轉回 Qiskit）的白名單仍不接受函式呼叫。
+
+### 驗證（本機 8 核心，未 push）
+| Gate | 結果 | 耗時 |
+|---|---|---|
+| `pytest -q`（含 100% 行＋分支門檻） | 385 passed，100.00% | 59.8 s |
+| `ruff check src tests scripts` | All checks passed | 0.01 s |
+| `ruff format --check src tests scripts` | 30 files already formatted | 0.01 s |
+| `mypy src`（`--no-incremental`） | Success（12 source files） | 4.0 s |
+| `pytest -q --no-cov tests/test_notebook.py`（無頭 notebook） | 1 passed | 2.4 s |
+| `scripts/build_dist.py` | `dist/qcconvert_colab.zip` 24,949 bytes、14 個檔案，sha256 `53f4a9e3…d2235` | — |
+| 解壓到隔離目錄後匯入（`python -I`） | `qcconvert` 從暫存目錄載入；Bell fidelity 1.0；`rx(sin(t))` 在 t = 0.4 時 fidelity 1.0 | — |

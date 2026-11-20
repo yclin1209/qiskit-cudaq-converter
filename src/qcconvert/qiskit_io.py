@@ -234,8 +234,6 @@ def _parameter_value(text: str, symbols: dict[str, object]) -> object:
             and node.value.id in symbols
         ):
             index = visit(node.slice)
-            if type(index) is int and isinstance(symbols[node.value.id], list):
-                return cast(Any, symbols[node.value.id])[index]
             if type(index) is int and hasattr(symbols[node.value.id], "__getitem__"):
                 return cast(Any, symbols[node.value.id])[index]
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
@@ -342,7 +340,8 @@ def to_source(ir: Circuit, name: str = "qc") -> str:
                     ),
                     node,
                 )
-            return self.generic_visit(node)
+            # 產生的程式只匯入別名後的 math／numpy，其他屬性會變成未定義名稱。
+            raise ConversionError(f"不支援參數運算式：{ast.unparse(node)}")
 
         def visit_Name(self, node: ast.Name) -> ast.AST:
             return (

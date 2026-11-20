@@ -36,4 +36,6 @@ Python 3.11+；環境備妥後使用：
 .venv/bin/mypy src
 ```
 
+覆蓋率門檻（coverage threshold）：`src/qcconvert` 的行＋分支（line + branch）覆蓋率須為 100%（`pyproject.toml`：`[tool.coverage.run] branch = true`、addopts `--cov-fail-under=100`），未達即 pytest 失敗。只跑單一測試檔時請加 `--no-cov`（例如 `.venv/bin/python -m pytest -q --no-cov tests/test_notebook.py`），否則部分覆蓋率會觸發門檻。真的無法觸及的程式碼優先刪除或重構；不得已才用 `# pragma: no cover`，並附中文理由。
+
 命令列範例：`python -m qcconvert input.py --to cudaq -o output.py --check`。`--check` 的結果碼：等價 0、不等價 1、轉換／檢查錯誤 2。

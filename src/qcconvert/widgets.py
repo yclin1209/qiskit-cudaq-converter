@@ -59,17 +59,20 @@ class ConverterApp:
             self._timer.start()
 
     def _on_direction(self, change: dict[str, Any]) -> None:
-        if self._timer is not None:
-            self._timer.cancel()
+        pending, self._timer = self._timer, None
+        if pending is not None and pending.is_alive():
+            pending.cancel()
+            # 延遲中的轉換先以原方向完成，否則切換方向會丟掉剛輸入、尚未轉換的程式碼。
+            self.convert(change["old"])
         previous = self.output.value
         self.input.value = previous
         self.convert()
 
-    def convert(self) -> None:
+    def convert(self, direction: str | None = None) -> None:
         try:
             result = (
                 qiskit_to_cudaq(self.input.value)
-                if self.direction.value == "cudaq"
+                if (direction or self.direction.value) == "cudaq"
                 else cudaq_to_qiskit(self.input.value)
             )
             self.output.value = result.code

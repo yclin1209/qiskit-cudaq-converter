@@ -1,5 +1,6 @@
 """產生 CUDA-Q kernel 原始碼並從真實 Python 檔載入。"""
 
+import ast
 import builtins
 import hashlib
 import importlib.util
@@ -13,7 +14,7 @@ from pathlib import Path
 import cudaq
 from qiskit import qasm2
 
-from .errors import ConversionError
+from .errors import ConversionError, UnsupportedFeatureError
 from .ir import Circuit, Op
 from .qiskit_io import to_ir
 
@@ -68,6 +69,37 @@ RESERVED = {
 } | set(dir(builtins))
 
 
+# Qiskit ParameterExpression 的函式名 → CUDA-Q kernel 可編譯的 numpy 呼叫。
+# abs／sign／conj 在 CUDA-Q 0.17 kernel 內無法編譯，因此不列入。
+FUNCTIONS = {
+    "sin": "sin",
+    "cos": "cos",
+    "tan": "tan",
+    "asin": "arcsin",
+    "acos": "arccos",
+    "atan": "arctan",
+    "exp": "exp",
+    "log": "log",
+}
+
+
+def _numpy_calls(text: str) -> str:
+    """把 `sin(theta)` 這類運算式改寫成 `np.sin(theta)`；不支援的函式明確拒絕。"""
+    if "(" not in text:
+        return text
+    tree = ast.parse(text, mode="eval")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if not (isinstance(node.func, ast.Name) and node.func.id in FUNCTIONS):
+                raise UnsupportedFeatureError(f"不支援參數運算式函式：{ast.unparse(node.func)}")
+            node.func = ast.Attribute(
+                value=ast.Name(id="np", ctx=ast.Load()),
+                attr=FUNCTIONS[node.func.id],
+                ctx=ast.Load(),
+            )
+    return ast.unparse(tree)
+
+
 def _identifier(name: str) -> str:
     clean = re.sub(r"\W", "_", name)
     if not clean or clean[0].isdigit() or keyword.iskeyword(clean) or clean in RESERVED:
@@ -107,7 +139,7 @@ def to_source(ir: Circuit, name: str = "kernel") -> str:
         text = repr(value) if isinstance(value, float) else value
         for original, clean in names.items():
             text = re.sub(r"\b" + re.escape(original) + r"\b", clean, text)
-        return text
+        return _numpy_calls(text)
 
     def emit(
         gate: str,
@@ -151,7 +183,7 @@ def to_source(ir: Circuit, name: str = "kernel") -> str:
                 emit("rx", (a,), ctrl, (-1.5707963267948966,))
                 emit("rx", (b,), ctrl, (-1.5707963267948966,))
         elif gate == "r":
-            emit("rz", target, ctrl, (f"-({param(values[1])})",))
+            emit("rz", target, ctrl, (f"-({values[1]})",))
             emit("rx", target, ctrl, (values[0],))
             emit("rz", target, ctrl, (values[1],))
         elif gate in {"u", "u3", "u2"}:
@@ -183,8 +215,8 @@ def load_kernel(code: str, name: str) -> object:
         path.write_text(code, encoding="utf-8")
     if module_name not in sys.modules:
         spec = importlib.util.spec_from_file_location(module_name, path)
-        if spec is None or spec.loader is None:
-            raise ConversionError("無法載入 kernel 原始碼")
+        # 路徑一定以 .py 結尾，標準 SourceFileLoader 必定提供 spec 與 loader；僅供型別收斂。
+        assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         try:

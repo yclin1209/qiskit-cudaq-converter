@@ -115,9 +115,7 @@ def _mid_counts(
     """以 run 的逐次回傳值取得真正的中途測量軌跡（sample 不保留此語意）。"""
     from .cudaq_io import load_kernel
 
-    source = getattr(kernel, "funcSrc", None)
-    if not isinstance(source, str):
-        raise ConversionError("中途測量需要可讀取原始碼的 kernel")
+    source = _kernel_source(kernel)
     try:
         rewritten, name, count = _capture_measurements(source)
         if count != len(mapping):
@@ -178,6 +176,14 @@ def _aer_counts(circuit: QuantumCircuit, shots: int, seed: int | None) -> dict[s
     runnable = transpile(circuit, simulator, optimization_level=0)
     result = simulator.run(runnable, shots=shots, seed_simulator=seed).result()
     return _normalize_qiskit_counts(dict(result.get_counts()), circuit)
+
+
+def _kernel_source(kernel: object) -> str:
+    """取得 `@cudaq.kernel` 的 Python 原始碼（funcSrc）；非此類 kernel 給明確錯誤。"""
+    source = getattr(kernel, "funcSrc", None)
+    if not isinstance(source, str):
+        raise ConversionError("需要可讀取原始碼（funcSrc）的 @cudaq.kernel")
+    return source
 
 
 def _kernel_parameters(kernel: object) -> list[str]:
@@ -259,15 +265,12 @@ def compare(
             from .cudaq_ast import from_source
             from .cudaq_io import load_kernel, to_source
 
-            source = getattr(kernel, "funcSrc", None)
-            if isinstance(source, str):
-                try:
-                    ir = from_source(source)
-                    bare = replace(ir, ops=[op for op in ir.ops if op.name != "measure"])
-                    state_kernel = load_kernel(to_source(bare, "state_kernel"), "state_kernel")
-                except ConversionError:
-                    state_kernel = None
-            else:
+            try:
+                ir = from_source(_kernel_source(kernel))
+                bare = replace(ir, ops=[op for op in ir.ops if op.name != "measure"])
+                state_kernel = load_kernel(to_source(bare, "state_kernel"), "state_kernel")
+            except ConversionError:
+                # 無原始碼或靜態解析不支援（如 h(q) 廣播）時，只比較取樣分佈。
                 state_kernel = None
         if state_kernel is not None:
             state_args = (
@@ -295,10 +298,8 @@ def compare(
         except (IndexError, ValueError) as exc:
             raise ConversionError(f"CUDA-Q 測量結果與 Qiskit clbit 對應不符：{exc}") from exc
     if mid:
-        ref_circuit = bound.copy()
-        if not measured:
-            ref_circuit.measure_all()
-        ref_counts = _aer_counts(ref_circuit, shots, seed)
+        # mid 為真代表至少有一個 measure，故參考電路必定已含測量。
+        ref_counts = _aer_counts(bound, shots, seed)
     else:
         rng = np.random.default_rng(seed)
         probabilities = Statevector.from_instruction(clean).probabilities()

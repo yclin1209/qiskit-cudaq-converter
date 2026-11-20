@@ -65,7 +65,7 @@
 - `fidelity = |⟨qiskit|cudaq⟩|²`：CPU ≥ `1 - 1e-6`，GPU fp32 ≥ `1 - 1e-4`，忽略整體相位；受控時用控制 `|+⟩` 比較以暴露相對相位錯誤。`TVD = 0.5 × Σ|P(k)-Q(k)|` ≤ 0.05，預設 4000 shots。
 - Qiskit `Statevector.sample_counts` 或選用 `qiskit_aer`，與 CUDA-Q 取樣採固定 seed（預設 1234）；CUDA-Q seed 設定方式及跨後端重現性屬假設，需測試驗證；不以 FutureWarning 文字斷言。於 1～5 qubits、固定亂數種子的語料控制執行成本。
 ## 4. 實作批次與順序
-- 共同先決：批次 A 即建立 `pyproject.toml` 的測試／靜態檢查設定（批次 C 再完成交付設定），`pytest` 的 `addopts` 包含 `--cov=qcconvert --cov-fail-under=90`；mypy `strict = true`，僅對 `cudaq`、`qiskit*`、`ipywidgets`、`IPython` 允許 `ignore_missing_imports`；必要的局部型別忽略須說明原因。不新增依賴。
+- 共同先決：批次 A 即建立 `pyproject.toml` 的測試／靜態檢查設定（批次 C 再完成交付設定），`pytest` 的 `addopts` 包含 `--cov=qcconvert --cov-fail-under=90`（2026-11-21 起提高為行＋分支 100%：`[tool.coverage.run] branch = true`、`--cov-fail-under=100`，見文末更新紀錄）；mypy `strict = true`，僅對 `cudaq`、`qiskit*`、`ipywidgets`、`IPython` 允許 `ignore_missing_imports`；必要的局部型別忽略須說明原因。不新增依賴。
 - A：依序建立 IR、錯誤型別、Qiskit 輸入／輸出、CUDA-Q 原始碼產生與檔案型 `load_kernel`、等價比較／執行器、API Qiskit → CUDA-Q；建立受控相位、測量、參數、位元順序等測試。尚未實作的 B／C 模組不先建空檔或佔位函式，避免覆蓋率分母膨脹；`__init__.py` 暫只匯出已完成部分。每批實際執行四項 gates 與覆蓋率，未全綠不得進下批。
 - B：AST 白名單解析一個或指定的 kernel；僅接受 `float`／`list[float]` 常數索引參數、多個 `qvector(N)`／`qubit()` 依序編號；展開固定 `range` 與常數算術索引，保留 `2*theta`、`np.pi/2`、`math.pi` 等參數運算式；解析 `.ctrl/.adj` 與測量。kernel 物件走 synthesize → OpenQASM 2 → IR；確認分解、`r1`／受控相位及 round trip。補齊 `cudaq_to_qiskit`／`to_qiskit()`，再跑 gates。
 - C：widgets／magics／CLI、`colab/qcconvert_demo.ipynb`、`colab/README_colab.md`、`scripts/build_dist.py`、`README.md`，最後審核 `pyproject.toml`；zip 放 `qcconvert/`、notebook、Colab 說明，排除 `.venv`、快取與測試。Colab 說明 T4 GPU／CPU 可用、切換 runtime 後重新安裝、上傳 zip；notebook GPU 檢查失敗不報錯，安裝 cell 可用 `QCCONVERT_SKIP_INSTALL=1` 跳過，非 Colab 不呼叫上傳 API；顯示版本／target、Bell／GHZ／參數電路、兩個 magics、`show()` 與可選 GPU 比較；無 GitHub 連結時徽章僅說明日後補上。明示 Qiskit 原始碼「會執行輸入的程式碼」。再跑 gates、覆蓋率及無頭 notebook。
@@ -99,3 +99,9 @@
 - SPEC 未明確規定：`compare` 未給 `args` 的符號電路、GPU 覆寫但裝置不可用、`--check` 遇不可比較時的表示；保守回報 `ConversionError`／CLI 2，不虛報等價。
 - SPEC 未明確規定：CLI `--to qiskit --check` 的 CUDA-Q 原始碼參考如何安全執行；遵守「CUDA-Q 原始碼 AST 不執行」已決定事項，保守拒絕檢查並回傳 2，待人確認安全參考途徑。
 - SPEC 未明確規定：參數向量命名衝突清理、Qiskit 原始碼「最後指派」判準及 AST 同檔多 kernel 預設選擇；按 §3.2／§3.4 字面實作，歧義報含行號錯誤，不默默猜測。新問題只登錄本節，不更改凍結驗收範圍。
+
+## 更新紀錄：覆蓋率門檻（2026-11-21）
+- 門檻由行覆蓋率 ≥ 90% 提高為行＋分支（line + branch）覆蓋率 100%，由 `pyproject.toml` 強制（`branch = true`、`--cov-fail-under=100`）。SPEC §5 的 ≥ 90% 仍成立（100% 為更嚴格的子集）。
+- 補測以真實輸入斷言可觀察結果（錯誤型別、訊息中的建構名稱與行號、輸出），僅在真正的邊界（缺少選用依賴、CUDA-Q 模擬器回傳）使用 monkeypatch。
+- 無法觸及的防禦式程式碼優先刪除或重構；`# pragma: no cover` 為最後手段，須附中文理由。目前 0 個 pragma。
+- 單一測試檔執行請加 `--no-cov`。
